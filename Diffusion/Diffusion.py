@@ -69,31 +69,47 @@ class GaussianDiffusionSampler(nn.Module):
         self.register_buffer('betas',torch.linspace(beta_1, beta_T,T).double())
         alphas = 1. - self.betas
         alphas_bar = torch.cumprod(alphas, dim = 0)
-        alphas_bar_prev = F.pad(alphas_bar,[1,0], value=1)[:T]
 
+        alphas_bar_prev = F.pad(alphas_bar,[1,0], value=1)[:T] 
+        # This over here is a little trick
+        # For example if alpha_bar = [0.99, 0.98, 0.96, 0.94]
+        # Padding adds a 1 at the beginning
+        # then, alpha_bar = [1, 0.99, 0.98, 0.96, 0.94]
+        # After that [:T] keeps only [1, 0.99, 0.98, 0.96]
+        # so now alphas_bar_prev[t] = alphas_bar[t-1]
+
+
+        # now we get the variables from the DDPM derivation
         self.register_buffer('coeff1', torch.sqrt(1./ alphas))
         self.register_buffer('coeff2', self.coeff1 * (1. - alphas) / torch.sqrt(1. - alphas_bar))
-
         self.register_buffer('posterior_var', self.betas*(1. - alphas_bar_prev)/(1. - alphas_bar))
 
 
+    # predict previous mean
     def predict_xt_prev_mean_from_eps(self,x_t,t, eps):
+        # x_t is the current noisy image
+        # eps is the predicted noise
+        # returns mean of x_{t-1}
         assert x_t.shape == eps.shape
         return (
-            extract(self.coeff1, t, x_t.shape)*x_t-
+            extract(self.coeff1, t, x_t.shape)*x_t- # this is the exact DDPM equation
             extract(self.coeff2, t, x_t.shape)*eps
         )    
-    
-    def p_mean_variance(self,x_t,t):
+    # The network predicts the noise, and this formula converts that prediction into the mean of the previous timestep.
+
+    def p_mean_variance(self,x_t,t): # its job is to compute the Gaussian distribution
         # below: only log_variance is used in the KL computations
         var = torch.cat([self.posterior_var[1:2],self.betas[1:]])
+        # The first element is never actually used in sampling because at t=0 no noise is added.
         var = extract(var,t,x_t.shape)
+        # selects the correct variance for each image in the batch.
 
-
-        eps = self.model(x_t,t)
+        eps = self.model(x_t,t) # The U-Net predicts the noise not an image
+        
         xt_prev_mean = self.predict_xt_prev_mean_from_eps(x_t,t,eps=eps)
-
-        return xt_prev_mean, var
+        
+        return xt_prev_mean, var 
+        # Hence we now have the mean and the variance p(x_{t-1}|x_t)
     
     def forward(self, x_T): 
         """
@@ -110,11 +126,22 @@ class GaussianDiffusionSampler(nn.Module):
             if time_step > 0:
                 noise = torch.randn_like(x_t)
             else:
-                noise = 0
+                noise = 0 # no more randomness
+            # otherwise the final image would still contain noise    
 
-            x_t = mean + torch.sqrt(var) * noise
-            assert torch.isnan(x_t).int().sum() == 0 , "nan in tensor."
+            x_t = mean + torch.sqrt(var) * noise #  we move one step closer to clean image
+            # NaN check
+            assert torch.isnan(x_t).int().sum() == 0 , "nan in tensor." # making sure no invalid numbers appear
 
         x_0 = x_t
-        return torch.clip(x_0, -1, 1)               
+        return torch.clip(x_0, -1, 1)       
+    # images were trained in the range [-1,1], so the output is clipeed to that range.  
+
+"""
+GaussianDiffusionTrainer learns a model that predicts the noise ϵ added to an image at any timestep.
+GaussianDiffusionSampler uses that trained model to iteratively estimate and remove noise, one timestep at a time, starting from pure Gaussian noise.
+
+So the trainer teaches the U-Net how to recognize noise, and the sampler uses that knowledge to turn random noise into a realistic image.
+""" 
+          
 
