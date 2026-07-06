@@ -2,7 +2,6 @@
 
 ## Acknowledgments
 
-## Acknowledgments
 
 This repository documents my journey of learning Denoising Diffusion Probabilistic Models (DDPMs).
 
