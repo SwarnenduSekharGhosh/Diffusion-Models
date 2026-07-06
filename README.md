@@ -2,18 +2,25 @@
 
 ## Acknowledgments
 
-This repository was developed as part of my study of Denoising Diffusion Probabilistic Models (DDPMs).
+## Acknowledgments
 
-The implementation is based on and inspired by the following open-source project:
+This repository documents my journey of learning Denoising Diffusion Probabilistic Models (DDPMs).
 
-- **Repository:** DenoisingDiffusionProbabilityModel-ddpm-
-- **Author:** ZOUbohao
-- **GitHub:** https://github.com/zoubohao/DenoisingDiffusionProbabilityModel-ddpm-
-- **License:** MIT License
+At this stage, I am using the implementation by ZOUbohao as a primary learning reference. Many parts of the current code are adapted from or closely follow the original implementation while I work to understand the underlying mathematics and algorithms.
 
-The original implementation served as a reference for understanding the DDPM algorithm. This repository has been rewritten, extensively annotated, and modified for educational and research purposes. Additional comments, explanations, experiments, and code modifications are my own.
+**Original repository**
+- Repository: DenoisingDiffusionProbabilityModel-ddpm-
+- Author: ZOUbohao
+- GitHub: https://github.com/zoubohao/DenoisingDiffusionProbabilityModel-ddpm-
+- License: MIT License
 
-This implementation is intended for learning and research and should not be considered an exact copy of the original repository.
+My contributions include:
+- Extensive inline explanations and documentation
+- Detailed code annotations for learning
+- Experiments and modifications while studying diffusion models
+- Additional implementations and extensions as my understanding grows
+
+**Goal:** As I gain a deeper understanding of diffusion models, I intend to progressively replace adapted components with my own implementations written from scratch.
 
 ### References
 
