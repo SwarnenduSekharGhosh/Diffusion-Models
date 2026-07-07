@@ -33,7 +33,7 @@ class TimeEmbedding(nn.Module):
         # d_model = initial embedding size
         # dim = final embedding size used inside the U-Net
         assert d_model % 2 ==0
-        #later the code creates half sin values half cos values
+        # later the code creates half sin values half cos values
         super().__init__()
         emb = torch.arange(0, d_model, step = 2) / d_model * math.log(10000)
         # understanding with a small example: 
@@ -67,6 +67,7 @@ class TimeEmbedding(nn.Module):
             nn.Linear(dim,dim) # allows the network to learn a better representation.
         )
         self.initialize()
+
     # Initialize weights
     def initialize(self):
         for module in self.modules():
@@ -102,4 +103,116 @@ the U-Net so the network knows where it is in the diffusion process.
 """
 # ****** An important question to comeback here : Why do we compute the sinusoidal embeddings ourselves and then store them in an nn.Embedding layer, 
 # instead of just computing sin() and cos() inside the forward() method every time?
+
+
+# **************** Now we start to code the structure of the U-Net *************
+
+"""
+1. Input image
+2. ResBlock
+3. DownSample     # reduce the spatial size if the feature maps
+4. ResBlock
+5. DownSample     # reduce the spatial size if the feature maps
+6. Bottleneck
+7. UpSample
+8. ResBlock
+9. UpSample
+10. Output
+
+"""
+class DownSample(nn.Module):
+    def __init__(self, in_ch):
+        super().__init__()
+        self.main = nn.Conv2d(in_ch, in_ch, 3, stride = 2, padding = 1) #this is one convolution
+        self.initialize()                      # with stride = 2 the output becomes smaller
+
+    def initialize(self):
+        init.xavier_uniform_(self.main.weight) # initializes the convolution weights. 
+        init.zeros_(self.main.bias) # makes every bias zero.
+
+    def forward(self,x,temb):
+        x = self.main(x)
+        # The convolution performs
+        # Learn filters.
+        # Reduce resolution.
+        # Produce the next feature map.
+        return x
+    
+## Changing the number of channels is usually done inside the ResBlock, not the DownSample block.    
+    
+"""
+An important note : 
+
+Why not use MaxPool2d ?
+
+Early CNNs like AlexNet and VGG often used max pooling to reduce the spatial dimensions. 
+Modern architectures-Including ResNet, many U-nets and most diffusion models prefer stride 2- convolutions
+because they are learnable.
+A max-pooling layer always performs the same fixed operation. A stride 2- convolution learns how to downsample
+in the most useful way for the task. In diffusion models, preserving important image details during
+the encoder path is crucial for accurate denoising so a learnable downsampling operation is generally preferred.
+"""
+        
+class UpSample(nn.Module): #the upsample block expands it back to the original resolution
+    def __init__(self, in_ch):
+        super().__init__()  
+        self.main = nn.Conv2d(in_ch, in_ch, 3, stride=1, padding=1)
+        # unlike downsample this convolution doesnot change the image size
+        # it only learns better features after the image has been enlarged
+        self.initialize()
+
+    def initialize(self):
+        init.xavier_uniform_(self.main.weight) # initializes the conv weights
+        init.zeros_(self.main.bias)       # makes every bias zero
+    
+    def forward(self,x,temb):
+        _,_,H,W = x.shape
+        x = F.interpolate(
+            x, scale_factor = 2, mode='nearest') # the original feature map is upscaled (doubled)
+                               #nearest neighbour interpolation simply copies every pixel. nothing is learned yet
+        x = self.main(x) # after enlarging the feature map, the convolution learns how to refine it.
+        return x         # the convolution learns meaningful features after upsampling
+
+"""
+These two blocks form the "U" shape of the U-Net. The encoder repeatedly DownSamples to capture 
+increasingly abstract information,  and the decoder repeatedly UpSamples while combining 
+features from the encoder
+"""
+
+class AttnBlock(nn.Module):
+    def __init__(self, in_ch): 
+        super().__init__()
+        self.group_norm = nn.GroupNorm(32,in_ch)
+        self.proj_q = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_k = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_v = nn.Conv2d(in_ch,in_ch,1 , stride=1, padding=0)
+        self.proj = nn. Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.initialize()
+
+    def initialize(self):
+        for module in [self.proj_q, self.proj_k,self.proj_v, self.proj]:
+            init.xavier_uniform_(module.weight)
+            init.zeros_(module.bias)
+        init.xavier_uniform_(self.proj.weight, gain=1e-5)
+
+    def forward(self,x):
+        B,C,H,W = x.shape
+        h  = self.group_norm(x)
+        q = self.proj_q(h)
+        k = self.proj_k(h)
+        v = self.proj_v(h)
+
+        q = q.permute(0,2,3,1).view(B, H*W, C)
+        k = k.view(B,C,H*W)
+        w = torch.bmm(q,k)*(int(C) ** (-0.5))
+        assert list(w.shape) == [B,H * W,H * W]
+        W = F.softmax(w, dim=-1)
+
+        v = v.permute(0,2,3,1).view(B,H*W,C)
+        h = torch.bmm(w,v)
+        assert list(h.shape) == [B,H*W,C]
+        h = h.view(B,H,W,C).permute(0,3,1,2)
+        h = self.proj(h)
+
+        return x + h
 
