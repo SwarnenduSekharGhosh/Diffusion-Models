@@ -179,6 +179,9 @@ increasingly abstract information,  and the decoder repeatedly UpSamples while c
 features from the encoder
 """
 
+# This is the self attention block of the diffusion U-Net : the job is to let every pixel/location
+# look at every other pixel/location and decide what information is important.
+
 class AttnBlock(nn.Module):
     def __init__(self, in_ch): 
         super().__init__()
@@ -207,6 +210,7 @@ class AttnBlock(nn.Module):
         w = torch.bmm(q,k)*(int(C) ** (-0.5))
         assert list(w.shape) == [B,H * W,H * W]
         W = F.softmax(w, dim=-1)
+        
 
         v = v.permute(0,2,3,1).view(B,H*W,C)
         h = torch.bmm(w,v)
