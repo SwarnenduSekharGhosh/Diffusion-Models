@@ -220,14 +220,14 @@ class AttnBlock(nn.Module):
 
         w = torch.bmm(q,k)*(int(C) ** (-0.5)) # batch matrix multiplication (B, H*W,C) X (B,C,H*W) = (B, H*W, H*W)
                                               # the scaling term c **(-0.5) keeps the attention scores stable
-        assert list(w.shape) == [B,H * W,H * W] # explaination()
+        assert list(w.shape) == [B, H * W, H * W] # to check the final dimension of w
         w = F.softmax(w, dim=-1) # compute attention scores
         
         
         v = v.permute(0,2,3,1).view(B,H*W,C) # reshape "value"
 
         h = torch.bmm(w,v) # batch matrix multiplication (every location receives information from all other locations)
-        assert list(h.shape) == [B,H*W,C] 
+        assert list(h.shape) == [B,H*W,C]  # to check the final dimension of h
         h = h.view(B,H,W,C).permute(0,3,1,2) # Here, (B, H*W, C) becomes (B,C,H,W) so it is again normal image-like feature map
         h = self.proj(h) # another 1x1 convolution. This mixes the attended channel information
 
