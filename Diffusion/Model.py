@@ -240,9 +240,37 @@ class AttnBlock(nn.Module):
         return x + h   # original feature map + attention-modified feature map
                        # this doesnot completely replace "x", but it adds useful global information to it.
                         
+""" ResBlock : this block helps the U-Net process the noisy image while knowing the current diffusionU-Net.
 
+Input feature x
+      │
+      ▼
+Normalize + activation + convolution
+      │
+      ▼
+Add time embedding information
+      │
+      ▼
+Normalize + activation + dropout + convolution
+      │
+      ▼
+Add shortcut connection
+      │
+      ▼
+Optional attention
+      │
+      ▼
+Output feature
+
+
+"""
 class ResBlock(nn.Module):
     def __init__(self, in_ch, out_ch, tdim, dropout, attn = False):
+        # in_ch   = number of input channels (128)
+        # out_ch  = number of output channels (256)
+        # tdim    = dimension of time embedding (512)
+        # drpout  = dropout probability
+        # attn    = whether to use attention or not 
         super().__init__()
         self.block1 = nn.Sequential(
             nn.GroupNorm(32,in_ch),
@@ -265,12 +293,18 @@ class ResBlock(nn.Module):
             self.shortcut = nn.Identity()
             if attn:
                 self.attn = AttnBlock(out_ch)
-            else: 
+            else:
                 self.attn = nn.Identity()
         self.initialize()
 
+    def initialize(self):
+        for module in self.modules():
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
+                init.xavier_uniform_(module.weight)
+                init.zeros_(module.bias)
+        init.xavier_uniform_(self.block2[-1].weight, gain = 1e-5)        
 
-        def initialize(self, x , temb):
+    def forward(self, x , temb):
             h = self.block1(x)
             h+= self.temb_proj(temb)[:,:, None, None]
             h = self.block2(h)
