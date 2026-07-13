@@ -190,21 +190,27 @@ class AttnBlock(nn.Module):
     def __init__(self, in_ch): 
         super().__init__()
         self.group_norm = nn.GroupNorm(32,in_ch) # in_ch must be divisible by 32
+        # although it starts from same feature map but independent linear transformations 
+        # so that they donot share weights 
         self.proj_q = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
         self.proj_k = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
         self.proj_v = nn.Conv2d(in_ch,in_ch,1 , stride=1, padding=0)
-        self.proj = nn. Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
-        
+        self.proj = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        # why all of them are 1x1 convolution ?
+        # because attention already mixes spatial information.The convolution doesnot need to look at neighbouring pixels.
+        # Its only job is to transform the channel representation.
         self.initialize()
     
-
+    # Initialize every convolution with standard Xavier initilization
+    # it prevent exploding activations
+    # and, vanishing activations at the beginning of training.
     def initialize(self):
         for module in [self.proj_q, self.proj_k,self.proj_v, self.proj]:
             init.xavier_uniform_(module.weight)
-            init.zeros_(module.bias)
+            init.zeros_(module.bias) #starts every bias at zero
         
         init.xavier_uniform_(self.proj.weight, gain=1e-5)
-
+    # Important : 
     def forward(self,x):
         B,C,H,W = x.shape
 
@@ -235,3 +241,41 @@ class AttnBlock(nn.Module):
                        # this doesnot completely replace "x", but it adds useful global information to it.
                         
 
+class ResBlock(nn.Module):
+    def __init__(self, in_ch, out_ch, tdim, dropout, attn = False):
+        super().__init__()
+        self.block1 = nn.Sequential(
+            nn.GroupNorm(32,in_ch),
+            Swish(),
+            nn.Conv2d(in_ch,out_ch, 3, stride = 1, padding = 1),
+        )
+        self.temb_proj = nn.Sequential(
+            Swish(),
+            nn.Linear(tdim, out_ch),
+        )
+        self.block2 = nn.Sequential(
+            nn.GroupNorm(32, out_ch),
+            Swish(),
+            nn.Dropout(dropout),
+            nn.Conv2d(out_ch, out_ch, 3, stride=1, padding=1),    
+        )
+        if in_ch !=out_ch:
+            self.shortcut = nn.Conv2d(in_ch, out_ch, 1 , stride=1, padding=0)
+        else:
+            self.shortcut = nn.Identity()
+            if attn:
+                self.attn = AttnBlock(out_ch)
+            else: 
+                self.attn = nn.Identity()
+        self.initialize()
+
+
+        def initialize(self, x , temb):
+            h = self.block1(x)
+            h+= self.temb_proj(temb)[:,:, None, None]
+            h = self.block2(h)
+
+            h = h + self.shortcut(x)
+            h = self.attn(h)
+            return h
+                
