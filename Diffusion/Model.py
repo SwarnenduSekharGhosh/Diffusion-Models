@@ -274,42 +274,56 @@ class ResBlock(nn.Module):
         super().__init__()
         self.block1 = nn.Sequential(
             nn.GroupNorm(32,in_ch),
-            Swish(),
-            nn.Conv2d(in_ch,out_ch, 3, stride = 1, padding = 1),
+            Swish(), # this gives smooth non-linearity.
+            nn.Conv2d(in_ch,out_ch, 3, stride = 1, padding = 1), #  
         )
-        self.temb_proj = nn.Sequential(
+        # time embedding projection
+        # This part takes the time embedding and converts it to the 
+        # same number of channels as the feature map.
+        self.temb_proj = nn.Sequential( 
             Swish(),
-            nn.Linear(tdim, out_ch),
+            nn.Linear(tdim, out_ch), # temb_proj(temb).shape = (4, 256)
         )
+        # Because we need to add this time information to the feature map
+        # whose channel dimension is now out_ch
+
+        # the next block continues processing after the time embedding has been added.
         self.block2 = nn.Sequential(
             nn.GroupNorm(32, out_ch),
             Swish(),
-            nn.Dropout(dropout),
+            nn.Dropout(dropout), # roughly dropout% of activations are dropped.
             nn.Conv2d(out_ch, out_ch, 3, stride=1, padding=1),    
-        )
+        ) # This keeps the number of channels the same
         if in_ch !=out_ch:
             self.shortcut = nn.Conv2d(in_ch, out_ch, 1 , stride=1, padding=0)
         else:
             self.shortcut = nn.Identity()
-            if attn:
+        if attn:
                 self.attn = AttnBlock(out_ch)
-            else:
+        else:
                 self.attn = nn.Identity()
-        self.initialize()
-
+        # This is the residual connection.        
+        
+        self.initialize() 
+    
+    # This initializes all convolution and linear layers.
     def initialize(self):
         for module in self.modules():
             if isinstance(module, (nn.Conv2d, nn.Linear)):
-                init.xavier_uniform_(module.weight)
-                init.zeros_(module.bias)
-        init.xavier_uniform_(self.block2[-1].weight, gain = 1e-5)        
+                init.xavier_uniform_(module.weight) #initializes the weights in a stable way.
+                init.zeros_(module.bias) # setting bias to zero.
+        init.xavier_uniform_(self.block2[-1].weight, gain = 1e-5)  #this initializes the last convolution
+        # block 2   with a very small gain.     
 
     def forward(self, x , temb):
             h = self.block1(x)
             h+= self.temb_proj(temb)[:,:, None, None]
             h = self.block2(h)
-
+            # o the block adds the transformed feature h to the original input x.
+            # the shape of h and shape of x are different so cannot be added directly.
+    
             h = h + self.shortcut(x)
+            # so the shortcut uses a 1x1 convolution
             h = self.attn(h)
             return h
                 
