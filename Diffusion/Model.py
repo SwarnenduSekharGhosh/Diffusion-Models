@@ -388,6 +388,7 @@ GroupNorm → Swish → Dropout → Conv                  │
                  Output
 
 """
+
 class UNet(nn.Module):
     def __init(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
         super().__init__()
@@ -424,7 +425,7 @@ class UNet(nn.Module):
                     in_ch = chs.pop() + now_ch, out_ch = out_ch, tdim = tdim,
                     dropout = dropout, attn = (i in attn)))
                 now_ch = out_ch
-            if i in !=0:
+            if i != 0:
                 self.upblocks.append(UpSample(now_ch))
         assert len(chs) == 0 
 
