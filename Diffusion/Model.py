@@ -317,13 +317,39 @@ class ResBlock(nn.Module):
 
     def forward(self, x , temb):
             h = self.block1(x)
+            """ This does : 
+            GroupNorm     (4, 128, 32, 32)
+              ↓
+            Swish
+              ↓
+            Conv2d        (4, 256, 32, 32)
+            """
             h+= self.temb_proj(temb)[:,:, None, None]
+            """
+            Tis step is very important : 
+            """
             h = self.block2(h)
-            # o the block adds the transformed feature h to the original input x.
-            # the shape of h and shape of x are different so cannot be added directly.
+            """
+            the second convolution block. This does,
+            GroupNorm
+            ↓
+            Swish
+            ↓
+            Dropout
+            ↓
+            Conv2d
+
+            """
+            
     
             h = h + self.shortcut(x)
-            # so the shortcut uses a 1x1 convolution
+            """
+            so the block adds the transformed feature h to the original input x.
+            the shape of h and shape of x are different so cannot be added directly.
+            so the shortcut uses a 1x1 convolution
+            """
+
+            
             h = self.attn(h)
             return h
                 
