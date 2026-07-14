@@ -397,8 +397,42 @@ class UNet(nn.Module):
         
         self.head = nn.Conv2d(3, ch, kernel_size = 3, stride = 1, padding = 1)
         self.downblocks = nn.ModuleList()
-        chs = [ch]
+        chs = [ch] #record output channel when downsample for upsample
         now_ch = ch
-        
+        for i, mult in enumerate(ch_mult):
+            out_ch = ch*mult
+            for _ in range(num_res_blocks):
+                self.downblocks.append(ResBlock(
+                    in_ch = now_ch, out_ch = out_ch, tdim = tdim,
+                    dropout = dropout, attn = (i in attn)))
+                now_ch = out_ch
+                chs.append(now_ch)
+            if i !=len(ch_mult) - 1:
+                self.downblocks.append(DownSample(now_ch))
+                chs.append(now_ch)
 
-        )
+        self.middleblocks = nn.ModuleList([
+            ResBlock(now_ch, now_ch, tdim, dropout, attn = True),
+            ResBlock(now_ch, now_ch, tdim, dropout, attn = False),
+        ])        
+        
+        self.upblocks = nn.ModuleList()
+        for i, mult in reversed(list(enumerate(ch_mult))):
+            out_ch = ch * mult
+            for _ in range(num_res_blocks + 1):
+                self.upblocks.append(ResBlock(
+                    in_ch = chs.pop() + now_ch, out_ch = out_ch, tdim = tdim,
+                    dropout = dropout, attn = (i in attn)))
+                now_ch = out_ch
+            if i in !=0:
+                self.upblocks.append(UpSample(now_ch))
+        assert len(chs) == 0 
+
+
+        self.tail = nn.Sequential(
+            nn.GroupNorm(32, now_ch),
+            Swish(),
+            nn.Conv2d(now_ch, 3, 3, stride = 1, padding = 1)
+        )             
+        self.initialize()
+        
