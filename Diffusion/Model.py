@@ -273,9 +273,9 @@ class ResBlock(nn.Module):
         # attn    = whether to use attention or not 
         super().__init__()
         self.block1 = nn.Sequential(
-            nn.GroupNorm(32,in_ch),
+            nn.GroupNorm(32,in_ch), #the in_ch must be divisible by 32
             Swish(), # this gives smooth non-linearity.
-            nn.Conv2d(in_ch,out_ch, 3, stride = 1, padding = 1), #  
+            nn.Conv2d(in_ch,out_ch, 3, stride = 1, padding = 1), #this changes the number of channels.  
         )
         # time embedding projection
         # This part takes the time embedding and converts it to the 
@@ -286,7 +286,6 @@ class ResBlock(nn.Module):
         )
         # Because we need to add this time information to the feature map
         # whose channel dimension is now out_ch
-
         # the next block continues processing after the time embedding has been added.
         self.block2 = nn.Sequential(
             nn.GroupNorm(32, out_ch),
@@ -294,26 +293,32 @@ class ResBlock(nn.Module):
             nn.Dropout(dropout), # roughly dropout% of activations are dropped.
             nn.Conv2d(out_ch, out_ch, 3, stride=1, padding=1),    
         ) # This keeps the number of channels the same
-        if in_ch !=out_ch:
+
+        if in_ch !=out_ch: #this is the residual connection
             self.shortcut = nn.Conv2d(in_ch, out_ch, 1 , stride=1, padding=0)
         else:
             self.shortcut = nn.Identity()
+
+        # self attention is created here.   
         if attn:
                 self.attn = AttnBlock(out_ch)
         else:
                 self.attn = nn.Identity()
-        # This is the residual connection.        
-        
+          
         self.initialize() 
     
     # This initializes all convolution and linear layers.
     def initialize(self):
         for module in self.modules():
             if isinstance(module, (nn.Conv2d, nn.Linear)):
-                init.xavier_uniform_(module.weight) #initializes the weights in a stable way.
+                init.xavier_uniform_(module.weight) # initializes the weights in a stable way.
                 init.zeros_(module.bias) # setting bias to zero.
-        init.xavier_uniform_(self.block2[-1].weight, gain = 1e-5)  #this initializes the last convolution
-        # block 2   with a very small gain.     
+        init.xavier_uniform_(self.block2[-1].weight, gain = 1e-5)  # this re-initializes the last convolution
+        # block 2  with a very small gain.     
+        # why make it so small?
+        # because later we see the ResBlock output is h = h + self.shortcut(x)
+        # at the beginning of training we want, h = 0,
+        # output - shortcut(x), this means the ResBlock initially behaves almost like an identity mapping.
 
     def forward(self, x , temb):
             h = self.block1(x)
@@ -326,7 +331,8 @@ class ResBlock(nn.Module):
             """
             h+= self.temb_proj(temb)[:,:, None, None]
             """
-            Tis step is very important : 
+            This step is very important : as the Pytorch broadcasts the time information across height and width to be added to 
+            every spatial location.
             """
             h = self.block2(h)
             """
@@ -338,18 +344,61 @@ class ResBlock(nn.Module):
             Dropout
             ↓
             Conv2d
-
             """
             
-    
             h = h + self.shortcut(x)
             """
-            so the block adds the transformed feature h to the original input x.
-            the shape of h and shape of x are different so cannot be added directly.
+            so the block adds the transformed feature 'h' to the original input x.
+            the shape of 'h' and shape of x are different so cannot be added directly.
             so the shortcut uses a 1x1 convolution
+
+            The block learns a correction to the input, rather than learning the whole transformation.
             """
 
             
             h = self.attn(h)
+            """
+            if attn = True, then the feature map goes through self-attention.
+            if attn = False, which means nothing changes.
+            """
             return h
                 
+"""
+
+we can think of the ResBlock like this: 
+Input feature x
+      │
+      ├─────────────── shortcut path ───────────────┐
+      │                                             │
+      ▼                                             │
+GroupNorm → Swish → Conv                            │
+      │                                             │
+      ▼                                             │
+Add time embedding                                  │
+      │                                             │
+      ▼                                             │
+GroupNorm → Swish → Dropout → Conv                  │
+      │                                             │
+      └──────────── add shortcut(x) ◄───────────────┘
+                    │
+                    ▼
+              Optional Attention
+                    │
+                    ▼
+                 Output
+
+"""
+class UNet(nn.Module):
+    def __init(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
+        super().__init__()
+        assert all([i< len(ch_mult) for i in attn]), 'attn index out of bound'
+        tdim = ch * 4
+        self.time_embedding = TimeEmbedding(T, ch, tdim)
+        
+        self.head = nn.Conv2d(3, ch, kernel_size = 3, stride = 1, padding = 1)
+        self.downblocks = nn.ModuleList()
+        chs = [ch]
+        now_ch = ch
+        
+
+        )
