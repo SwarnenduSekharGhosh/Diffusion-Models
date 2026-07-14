@@ -388,46 +388,133 @@ GroupNorm → Swish → Dropout → Conv                  │
                  Output
 
 """
-
+# Finally we write the code for the denoiser.
+"""
+Noisy image x_t + timestep t
+              ↓
+            U-Net
+              ↓
+        predicted noise ε
+"""
 class UNet(nn.Module):
-    def __init(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
+    def __init__(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
+        # T = number of diffusion timesteps
+        # base number of channels
+        # channel multiplier at each U-Net level
+        # where to apply attention
+        # number of ResBlocks at each level
+        # dropout rate inside ResBlocks
         super().__init__()
         assert all([i< len(ch_mult) for i in attn]), 'attn index out of bound'
+        # this assertion checks that I am not asking the model to apply attention at a 
+        # non-exisiting U-net level.
         tdim = ch * 4
+        # the timestep 't' is converted into a vector of size tdim.
+        # this time embedding is later injected into every ResBlock 
         self.time_embedding = TimeEmbedding(T, ch, tdim)
-        
+        # now comes the first layer of the UNet,
+        # it converts the input image from '3' channels (RGB) to ch channels. 
         self.head = nn.Conv2d(3, ch, kernel_size = 3, stride = 1, padding = 1)
         self.downblocks = nn.ModuleList()
-        chs = [ch] #record output channel when downsample for upsample
-        now_ch = ch
-        for i, mult in enumerate(ch_mult):
+        # this stores all encoder/downsampling blocks.
+        # A "ModuleList" is like a python list, but PyTorch properly registers the layers inside it.
+        chs = [ch]  # this stores the channel number for skip connections
+        """
+        Later, during the upsampling path, the model will concatenate decoder features with encoder features.
+
+        To build the upsampling ResBlocks correctly, the model needs to know how many channels will come from the skip connection.
+
+        That is why 'chs' stores these channel counts.
+        """
+        now_ch = ch # this stores the current number of channels. Becuase after the head convolution, the first layer, the feature map has ch channels.
+        
+        # now begins the downsampling loop
+        for i, mult in enumerate(ch_mult): # each i is one resolution level of the U-Net
             out_ch = ch*mult
+            """
+            so as the network goes deeper, the spatial size decreases but the number of channel increases.
+            """
+            # resblocks inside each downsampling level.
             for _ in range(num_res_blocks):
                 self.downblocks.append(ResBlock(
                     in_ch = now_ch, out_ch = out_ch, tdim = tdim,
-                    dropout = dropout, attn = (i in attn)))
-                now_ch = out_ch
-                chs.append(now_ch)
-            if i !=len(ch_mult) - 1:
+                    dropout = dropout, attn = (i in attn))) # attention condition
+                now_ch = out_ch #because the output of the block has now out_ch channels
+                chs.append(now_ch) # stores this channel count later for skip connections
+            # downsample layer
+            if i !=len(ch_mult) - 1: # Add a DownSample layer after each level, except the last one.
                 self.downblocks.append(DownSample(now_ch))
                 chs.append(now_ch)
-
+        
+        # middle blocks
+        """
+        Encoder / Downsampling
+        ↓
+        Middle blocks
+        ↓
+        Decoder / Upsampling
+        """
         self.middleblocks = nn.ModuleList([
             ResBlock(now_ch, now_ch, tdim, dropout, attn = True),
             ResBlock(now_ch, now_ch, tdim, dropout, attn = False),
         ])        
         
+        
         self.upblocks = nn.ModuleList()
+        # This stores the decoder part of the U-Net
+        # the decoder gradually restores the spatial resolution
         for i, mult in reversed(list(enumerate(ch_mult))):
-            out_ch = ch * mult
+            # reversed because the upsampling patch goes from deepest level back to shallowest level.
+            out_ch = ch * mult # this decides the output channel number for that level.
             for _ in range(num_res_blocks + 1):
+                """
+                ALERT : num_res_blocks + 1
+
+                Because in the U-Net decoder, at each level, we have to consume the saved skip connections
+                from the encoder. There is usually one extra skip feature due to the DownSample/level 
+                transition structure. That is why the decoder has one extra ResBlock per level.
+                """
+                # now the ResBlock is added, this ResBlock receives the concatenated feature map and outputs out_ch channels
                 self.upblocks.append(ResBlock(
                     in_ch = chs.pop() + now_ch, out_ch = out_ch, tdim = tdim,
+                    # chs.pop() = channels of the encoder skip features
+                    # now_ch = channels of current decoder feature
                     dropout = dropout, attn = (i in attn)))
-                now_ch = out_ch
+                now_ch = out_ch #updtes the current channel count 
             if i != 0:
-                self.upblocks.append(UpSample(now_ch))
+                self.upblocks.append(UpSample(now_ch)) # Add an UpSample layer after each decoder level, except the final level.
+        """
+        Deepest level
+        ResBlock
+        ResBlock
+        ResBlock
+        UpSample
+
+        Middle level
+        ResBlock
+        ResBlock
+        ResBlock
+        UpSample
+
+        Original-resolution level
+        ResBlock
+        ResBlock
+        ResBlock
+        No UpSample
+        """
+        
         assert len(chs) == 0 
+
+        """
+        This checks that every stored channel count has been used.
+
+        If this assertion fails, it means the U-Net construction is unbalanced:
+
+        number of saved encoder features ≠ number of decoder skip connections
+
+
+        """
+
 
 
         self.tail = nn.Sequential(
@@ -459,7 +546,7 @@ class UNet(nn.Module):
         # Upsampling
         for layer in self.upblocks:
             if isinstance(layer, ResBlock):
-                h = torch.cat([h, hs.pop()], dim = 1)
+                h = torch.cat([h, hs.pop()], dim = 1) # it concatenates the current decoder feature h + saved encoder feature. along dimension 1 means along the channel dimension.
             h = layer(h, temb)
         h = self.tail(h)
 
@@ -477,4 +564,5 @@ if __name__ == '__main__' :
         print(y.shape)          
 
 
-        
+
+
