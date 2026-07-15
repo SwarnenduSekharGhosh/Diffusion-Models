@@ -6,7 +6,7 @@ from torch.nn import functional as F
 
 class Swish(nn.Module):             # Here the swish activation function has been defined 
     def forward(self,x):     
-        return x * torch.signoid(x)
+        return x * torch.sigmoid(x)
     
 # Mathematically it means: 
 # Swish(x) = x . sigma(x)
