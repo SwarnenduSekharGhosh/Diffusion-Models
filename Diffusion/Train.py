@@ -13,9 +13,9 @@ from Diffusion import GaussianDiffusionSampler, GaussianDiffusionTrainer
 from Model import UNet
 from Scheduler import GradualWarmupScheduler
 
-def train(modelConfig : Dict):
-    device = torch.device(modelConfig["device"])
-    #dataset
+def train(modelConfig : Dict): # indicates that modelConfig should be a dictionary. It is mainly for readability and type checking. Python doesnot strictly enforce it at runtime.
+    device = torch.device(modelConfig["device"]) # this reads the device name from the configuration.
+    # dataset creation
     dataset =CIFAR10(
         root = './CIFAR10', train=True, download=True,
         transform=transforms.Compose([
