@@ -363,39 +363,40 @@ class ResBlock(nn.Module):
             """
             return h
                 
-"""
+            
+    """
 
-we can think of the ResBlock like this: 
-Input feature x
-      │
-      ├─────────────── shortcut path ───────────────┐
-      │                                             │
-      ▼                                             │
-GroupNorm → Swish → Conv                            │
-      │                                             │
-      ▼                                             │
-Add time embedding                                  │
-      │                                             │
-      ▼                                             │
-GroupNorm → Swish → Dropout → Conv                  │
-      │                                             │
-      └──────────── add shortcut(x) ◄───────────────┘
-                    │
-                    ▼
-              Optional Attention
-                    │
-                    ▼
-                 Output
+        we can think of the ResBlock like this: 
+        Input feature x
+            │
+            ├─────────────── shortcut path ───────────────┐
+            │                                             │
+            ▼                                             │
+        GroupNorm → Swish → Conv                            │
+            │                                             │
+            ▼                                             │
+        Add time embedding                                  │
+            │                                             │
+            ▼                                             │
+        GroupNorm → Swish → Dropout → Conv                  │
+            │                                             │
+            └──────────── add shortcut(x) ◄───────────────┘
+                            │
+                            ▼
+                    Optional Attention
+                            │
+                            ▼
+                        Output
 
-"""
-# Finally we write the code for the denoiser.
-"""
-Noisy image x_t + timestep t
-              ↓
-            U-Net
-              ↓
-        predicted noise ε
-"""
+    """
+        # Finally we write the code for the denoiser.
+    """
+            Noisy image x_t + timestep t
+                        ↓
+                        U-Net
+                        ↓
+                    predicted noise ε
+    """
 class UNet(nn.Module):
     def __init__(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
         # T = number of diffusion timesteps
@@ -511,46 +512,63 @@ class UNet(nn.Module):
         If this assertion fails, it means the U-Net construction is unbalanced:
 
         number of saved encoder features ≠ number of decoder skip connections
-
-
         """
-
-
-
+        #this is the final output layer.
+        # this converts the (B, now_ch, H, W) --> (B, 3, H , W)
         self.tail = nn.Sequential(
             nn.GroupNorm(32, now_ch),
             Swish(),
             nn.Conv2d(now_ch, 3, 3, stride = 1, padding = 1)
         )             
         self.initialize()
-        
+    # this initializes the head and the tail layers.   
     def initialize(self):
         init.xavier_uniform_(self.head.weight)
         init.zeros_(self.head.bias)
-        init.xavier_uniform_(self.tail[-1].weight, gain = 1e-5)
+        init.xavier_uniform_(self.tail[-1].weight, gain = 1e-5) 
+        # the last convolution is initialized with very small gain.
+        # why ? becuase at the start of the training we want the final output to be close to zero.
+        # so the U-Net initially predicts very small noise. This makes the training more stable. 
         init.zeros_(self.tail[-1].bias)
-
-    def forward(self, x, t):
+      
+    def forward(self, x, t): # x = noisy image x_t ; t = timestep ; x.shape = (B, 3, H, W) ; t.shape = (B,)
         # Timestep embedding
-        temb = self.time_embedding(t)
+        temb = self.time_embedding(t) # this converts t.shape = (B,) into t.shape (B, tdim) this "temb" is passed to all ResBlocks
         # Downsampling
-        h = self.head(x)
-        hs = [h]
+        h = self.head(x) # this converts image channels to feature channels. 
+        hs = [h] # this stores the first feature map for skip connections.
+        # the downsampling path
         for layer in self.downblocks:
-            h = layer(h,temb)
-            hs.append(h)
-
+            h = layer(h,temb) #each downblock receives h ,  temb
+            hs.append(h) #at every step the output feature 'h' is stored inside hs
+            # because later the upsampling path will reuse these features through skip connections
+            # point to be noted here : 'chs' is used as a constructor and stores the channel numbers
+            # whereas, 'hs' is used in the forward pass and stores the actual feature maps. 
         # Middle
         for layer in self.middleblocks:
             h = layer(h,temb)
+        # the feature map is now at the deepest resolution. it passes through two ResBlocks. One has attention
+        # one doesnot. No skip connection is added here.   
         # Upsampling
         for layer in self.upblocks:
-            if isinstance(layer, ResBlock):
+            if isinstance(layer, ResBlock): # the condition says that concatenation happens before ResBlocks not before UpSample layers.
                 h = torch.cat([h, hs.pop()], dim = 1) # it concatenates the current decoder feature h + saved encoder feature. along dimension 1 means along the channel dimension.
+                # before each upsampling ResBlock, the model takes one saved feature map from the encoder by hs.pop()
+                # pop removes the last stored feature. This is correct because U-net skip connections are used in reverse order.
+                # The deepest encoder feature is used first. 
+                # dim = 1 makes sure the concatenation takes place along the channel dimension.
+                # let us take an example to undestand this: 
+                # h.shape = (B, 256, 32, 32) and hs.pop().shape = (B,128, 32, 32), then,
+                # torch.cat ( ...., dim=1) --> (B, 384, 32, 32). The spatial sizes must match and alwasy be same. 
+            """
+            During downsampling, the network loses some fine spatial details. The decoder needs those details back.
+            So skip connections provide high-resolution information from the encoder. This helps the U-Net produce detailed outputs.
+            In DDPM, this is crucial because the model must predict pixel-level noise accurately.
+            """
             h = layer(h, temb)
-        h = self.tail(h)
-
-        assert len(hs) ==0
+        h = self.tail(h) # this converts the final feature map to image/noise channels
+                         # this final output is the predicted noise eps_theta = UNet(x_t,t)
+        assert len(hs) == 0 #this makes sure that all saved skip features are used. If 'hs' is not empty then something went wrong int he symmetry of the U-Net.
         return h             
 
 if __name__ == '__main__' :
@@ -564,5 +582,70 @@ if __name__ == '__main__' :
         print(y.shape)          
 
 
+"""
+Input noisy image x_t
+        │
+        ▼
+Head Conv
+        │
+        ▼
+Down ResBlocks + DownSample
+(save skip features in hs)
+        │
+        ▼
+Middle ResBlocks
+        │
+        ▼
+Up ResBlocks + UpSample
+(use skip features from hs)
+        │
+        ▼
+Tail Conv
+        │
+        ▼
+Predicted noise ε
+"""
 
+"""
+x_t
+ │
+ ▼
+Head Conv
+ │
+ ▼
+ResBlock ───────────────┐
+ │                      │
+ ▼                      │
+DownSample              │
+ │                      │
+ ▼                      │
+ResBlock ───────────┐   │
+ │                  │   │
+ ▼                  │   │
+DownSample          │   │
+ │                  │   │
+ ▼                  │   │
+Middle Blocks       │   │
+ │                  │   │
+ ▼                  │   │
+Concat ◄────────────┘   │
+ │                      │
+ ▼                      │
+ResBlock                │
+ │                      │
+ ▼                      │
+UpSample                │
+ │                      │
+ ▼                      │
+Concat ◄────────────────┘
+ │
+ ▼
+ResBlock
+ │
+ ▼
+Tail Conv
+ │
+ ▼
+Predicted noise
+"""
 
