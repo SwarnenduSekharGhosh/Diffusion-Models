@@ -60,48 +60,68 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
         
     # Optimizer 
     optimizer = torch.optim.AdamW(
-            net_model.parameters(), 
-            lr = modelConfig["lr"],
-              weight_decay=1e-4)
-    
+            net_model.parameters(),  # gives opitmizer acess to all trainable parameters of U-Net
+            lr = modelConfig["lr"], #the learning rate controls the size of each parameter update.
+              weight_decay=1e-4) # weight decay discourages model parameters from becoming unnecessarily large.
+    # the optimizer updates the U-Net parameters after backpropagation
+    # "AdamW" applies weight decay separately from the adaptive gradient update, unlike the original "Adam" implementation with ordinary L2 regularization.
     # Learning-rate schedulers
     cosineScheduler = optim.lr_scheduler.CosineAnnealingLR(
+         # this scehduler gradually lowers the learning rate following a cosine-shaped curve.
             optimizer=optimizer, 
-            T_max = modelConfig["epoch"],
-            eta_min=0,last_epoch= -1)
-    warmUpScheduler = GradualWarmupScheduler(
-            optimizer = optimizer, 
-            multiplier=modelConfig["multiplier"], 
-            warm_epoch= modelConfig["epoch"] // 10, 
-            after_scheduler=cosineScheduler)
+            T_max = modelConfig["epoch"], # controls the length of the cosine schedule
+            eta_min=0,last_epoch= -1) # eta_min = 0 is the minimum learning rate, last_epoch = -1 tells the pytorch that training is beginning from the initial sceduler state.
+    warmUpScheduler = GradualWarmupScheduler( # warmup gradually increases the learning rate at the beginning of training.
+            optimizer = optimizer, # this warmup can prevent unstable updates during the first few epochs when the network is randomly initialized. 
+            multiplier= modelConfig["multiplier"], # This controls the target learning rate relative to the optimizer's initial learning rate.
+            warm_epoch= modelConfig["epoch"] // 10, # how many epochs of the total number of epochs will be used as warm-up after that the cosine scheduler takes over.
+            after_scheduler= cosineScheduler)
     
     # Diffusion trainer
+    # This object wraps the U-Net and implements the forward diffusion training procedure
     trainer = GaussianDiffusionTrainer(
             net_model, 
-            modelConfig["beta_1"],
-            modelConfig["beta_T"],
-            modelConfig["T"]
+            modelConfig["beta_1"], # This is the starting variance of the noise schedule.
+            modelConfig["beta_T"], # This is the final variance in the noise schedule.
+            modelConfig["T"]  #  This is the number of diffusion steps.
             ).to(device)
     
+    """
+    1. Receive a clean image x_0
+    2. Randomly choose a timestep t.
+    3. Sample Gaussian noise ϵ.
+    4. Construct the noisy image x_t
+    5. Pass x_t and t through the U-Net.
+    6. Compare the predicted noise against the true noise.
+    """
+    
     os.makedirs(modelConfig["save_weight_dir"], exist_ok=True)
+    # This creates the directory where weights will be saved.
 
     # start training
-    for e in range(modelConfig["epoch"]):
-        net_model.train()
+    for e in range(modelConfig["epoch"]): # This repeats training for requested number of epochs.
+        net_model.train() # this puts the U-net into training mode
 
-        with tqdm(dataloader, 
+        with tqdm(dataloader, # creating the progress bar
                   dynamic_ncols=True
                   ) as tqdmDataLoader:
-                for images, _ in tqdmDataLoader:
+                # iterating through batches
+                for images, _ in tqdmDataLoader: # CIFAR-10 returns two items for every batch images, labels
+                                                 # '_' is used as a standard DDPM learns the image distribution without using class labels                    
                     # train
                     optimizer.zero_grad()
-
+                    # pytorch accumulates gradients by default
+                    # so before calculating gradients for each new batch, we reset them to zero
                     x_0 = images.to(device, non_blocking = True)
 
                     loss = trainer(x_0).sum() / 1000.
-                    # loss = trainer(x_0).mean()
+                    # the trainer(x_0) calls the forward() method of GaussianDiffusionTrainer.
+                    # it returns an element-wise squared error tensor. and then sums every loss value across the batch, channels, image height, image width.
+                    # then scale the sum by 1000
+
+                    # loss = trainer(x_0).mean() #For batch size B, channels C, height H, and width W, this will divide by B X C X H X W
                     
-                    loss.backward()
+                    loss.backward() # this performs backpropagation
                     
                     torch.nn.utils.clip_grad_norm_(
                         net_model.parameters(), 
