@@ -39,20 +39,20 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
                      attn=modelConfig["attn"], # controls at which resolution levels attention blocks are used. This allows different spatial positions in a feature map to interact directly. 
                      num_res_blocks=modelConfig["num_res_blocks"], # controls the number of residual blocks used at each resolution level.
                      dropout=modelConfig["dropout"] # controls dropout inside the residual blocks. If dropout is 0.1 means 10% of selected activations will be set to zero during training.
-                     ).to(device)
+                     ).to(device) # this moves the U-net parameters to the selected device.
     
     # Load existing weights only when provided
-    if modelConfig["training_load_weight"] is not None:
-        checkpoint_path = os.path.join(
-             modelConfig["save_weight_dir"],
+    if modelConfig["training_load_weight"] is not None: # this checks whether the user want to continue from the previously saved weights.
+        checkpoint_path = os.path.join(      # constructing the check point path
+             modelConfig["save_weight_dir"], 
              modelConfig["training_load_weight"]
         )
-        net_model.load_state_dict(
+        net_model.load_state_dict( #copying the parameter values into the current U-Net.
              torch.load(checkpoint_path, map_location=device)
         )
 
-        print(f"Loaded weights from:{checkpoint_path}")
-
+        print(f"Loaded weights from:{checkpoint_path}") # this confirms by printing the current file that was loaded.
+        
         #net_model.load_state_dict(
             #torch.load(os.path.join(
             #modelConfig["save_weight_dir"], 
