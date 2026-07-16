@@ -123,7 +123,7 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
                     
                     loss.backward() # this performs backpropagation
                     
-                    torch.nn.utils.clip_grad_norm_(
+                    torch.nn.utils.clip_grad_norm_( # this limits the total norm of the gradients
                         net_model.parameters(), 
                         modelConfig["grad_clip"]
                     )
@@ -131,7 +131,7 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
                     optimizer.step()
                     
                     tqdmDataLoader.set_postfix(ordered_dict={
-                        "epoch" : e #+ 1,
+                        "epoch" : e, #+ 1,
                         "loss: ": loss.item(),
                         "img shape: ": x_0.shape,
                         #"LR": optimizer.state_dict()['para_groups'][0]["lr"]
@@ -149,3 +149,26 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
 
         torch.save(net_model.state_dict(), checkpoint_path)
                              
+"""
+Clean images x₀
+        ↓
+GaussianDiffusionTrainer randomly chooses timestep t
+        ↓
+Gaussian noise ε is sampled
+        ↓
+Noisy image xₜ is constructed
+        ↓
+U-Net receives xₜ and t
+        ↓
+U-Net predicts noise εθ(xₜ, t)
+        ↓
+Predicted noise is compared with real noise ε
+        ↓
+Loss is computed
+        ↓
+Backpropagation calculates gradients
+        ↓
+Gradient clipping limits very large gradients
+        ↓
+AdamW updates U-Net parameters
+"""                             
