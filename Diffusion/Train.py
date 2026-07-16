@@ -17,21 +17,28 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
     device = torch.device(modelConfig["device"]) # this reads the device name from the configuration.
     # dataset creation
     dataset =CIFAR10(
-        root = './CIFAR10', train=True, download=True,
+        root = './CIFAR10', train=True, download=False,
         transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ]))
-    dataloader = DataLoader(dataset, batch_size = modelConfig["batch_size"], shuffle = True, num_workers = 4, drop_last = True, pin_memory = True)
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), # the first tuple represents the mean for each channel ; the second tuple represents the standard deviation
+        ])) 
+    # ToTensor() previously converted the values to [0,1], the final normalization converts 
+    # them to approx [-1,1]
+    dataloader = DataLoader(dataset, batch_size = modelConfig["batch_size"], 
+                            shuffle = True, num_workers = 4, drop_last = True, pin_memory = True)
+    # dataset is the dataset ; batch_szie determines how many images are processed in one optimization step ; 
+    # shufflerandomly changes the order of the training examples at the beginning of every epoch
+    # num_workers creates background workers, as the GPU trains on one batch the workers prepare upcoming batches.
+    # drop_last : drops incomplete final batch so that every batch has equal number of training samples.
     
     # model setup
-    net_model = UNet(T= modelConfig["T"], 
-                     ch=modelConfig["channel"], 
-                     ch_mult=modelConfig["channel_mult"], 
-                     attn=modelConfig["attn"],
-                     num_res_blocks=modelConfig["num_res_blocks"], 
-                     dropout=modelConfig["dropout"]
+    net_model = UNet(T= modelConfig["T"], # total number of diffusion timesteps
+                     ch=modelConfig["channel"],  # base number of feature channels in the U-Net
+                     ch_mult=modelConfig["channel_mult"], # controls how the number of feature channels change at each U-net resolution
+                     attn=modelConfig["attn"], # controls at which resolution levels attention blocks are used. This allows different spatial positions in a feature map to interact directly. 
+                     num_res_blocks=modelConfig["num_res_blocks"], # controls the number of residual blocks used at each resolution level.
+                     dropout=modelConfig["dropout"] # controls dropout inside the residual blocks. If dropout is 0.1 means 10% of selected activations will be set to zero during training.
                      ).to(device)
     
     # Load existing weights only when provided
