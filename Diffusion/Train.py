@@ -50,13 +50,39 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
         net_model.load_state_dict( #copying the parameter values into the current U-Net.
              torch.load(checkpoint_path, map_location=device)
         )
-
+        
         print(f"Loaded weights from:{checkpoint_path}") # this confirms by printing the current file that was loaded.
         
         #net_model.load_state_dict(
             #torch.load(os.path.join(
             #modelConfig["save_weight_dir"], 
             #modelConfig["training_load_weight"]), map_location=device))
+        
+        """
+        If we go for full checkpoint saving the loading section will also change here,
+        
+        start_epoch = 0
+
+        if modelConfig["training_load_weight"] is not None:
+            checkpoint_path = os.path.join(
+                modelConfig["save_weight_dir"],
+                modelConfig["training_load_weight"]
+            )
+
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+            net_model.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            warmUpScheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+            start_epoch = checkpoint["epoch"]
+
+            print(f"Loaded full checkpoint from: {checkpoint_path}")
+            print(f"Resuming from epoch: {start_epoch + 1}")
+
+        """
+
+
         
     # Optimizer 
     optimizer = torch.optim.AdamW(
@@ -148,7 +174,97 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
         )
 
         torch.save(net_model.state_dict(), checkpoint_path)
-                             
+
+
+        # If i want to save every "n" epoch then we can use if condition here;
+        # 
+        #if (e + 1) % 20 == 0:
+        #    checkpoint_path = os.path.join(
+        #        modelConfig["save_weight_dir"],
+        #        f"ckpt_{e+1}.pt"
+        #    )
+
+        #    torch.save(net_model.state_dict(), checkpoint_path)
+        #    print(f"Saved checkpoint: {checkpoint_path}")
+
+        # Another way of controlling this same thing is from modelConfig
+        # adding "save_interval" : 20 / 200 / .... in modelConfig
+
+        # if (e + 1) % modelConfig["save_interval"] == 0 or (e + 1) == modelConfig["epoch"]:
+        #       checkpoint_path = os.path.join(
+        #            modelConfig["save_weight_dir"],
+        #            f"ckpt_{e+1}.pt"
+        #       )
+
+        #        torch.save(net_model.state_dict(), checkpoint_path)
+        #        print(f"Saved checkpoint: {checkpoint_path}")
+
+        # ***************************Full checkpoint saving********************* # 
+        # Instead of only saving the model weights we can think of saving a dictionary 
+        # start training
+    """ 
+    for e in range(start_epoch, modelConfig["epoch"]): # This repeats training for requested number of epochs.
+        net_model.train() # this puts the U-net into training mode
+
+        with tqdm(dataloader, # creating the progress bar
+                  dynamic_ncols=True
+                  ) as tqdmDataLoader:
+                # iterating through batches
+                for images, _ in tqdmDataLoader: # CIFAR-10 returns two items for every batch images, labels
+                                                 # '_' is used as a standard DDPM learns the image distribution without using class labels                    
+                    # train
+                    optimizer.zero_grad()
+                    # pytorch accumulates gradients by default
+                    # so before calculating gradients for each new batch, we reset them to zero
+                    x_0 = images.to(device, non_blocking = True)
+
+                    loss = trainer(x_0).sum() / 1000.
+                    # the trainer(x_0) calls the forward() method of GaussianDiffusionTrainer.
+                    # it returns an element-wise squared error tensor. and then sums every loss value across the batch, channels, image height, image width.
+                    # then scale the sum by 1000
+
+                    # loss = trainer(x_0).mean() #For batch size B, channels C, height H, and width W, this will divide by B X C X H X W
+                    
+                    loss.backward() # this performs backpropagation
+                    
+                    torch.nn.utils.clip_grad_norm_( # this limits the total norm of the gradients
+                        net_model.parameters(), 
+                        modelConfig["grad_clip"]
+                    )
+                    
+                    optimizer.step()
+                    
+                    tqdmDataLoader.set_postfix(ordered_dict={
+                        "epoch" : e, #+ 1,
+                        "loss: ": loss.item(),
+                        "img shape: ": x_0.shape,
+                        #"LR": optimizer.state_dict()['para_groups'][0]["lr"]
+                        "LR": optimizer.state_dict()['param_groups'][0]["lr"]
+                         }
+                    )
+        # Update learning rate once after each epoch
+        warmUpScheduler.step()
+        
+        if (e + 1) % modelConfig["save_interval"] == 0 or (e + 1) == modelConfig["epoch"]:
+                checkpoint_path = os.path.join(
+                    modelConfig["save_weight_dir"],
+                    f"ckpt_{e+1}.pt"
+    )
+
+
+            checkpoint = {
+            "epoch": e + 1,
+            "model_state_dict": net_model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": warmUpScheduler.state_dict(),
+            "loss": loss.item(),
+            "modelConfig": modelConfig,
+            }
+
+            torch.save(checkpoint, checkpoint_path)
+            print(f"Saved full checkpoint: {checkpoint_path}")
+    """
+
 """
 Clean images x₀
         ↓
@@ -173,7 +289,7 @@ Gradient clipping limits very large gradients
 AdamW updates U-Net parameters
 """                             
 
-
+# Now we move to sampling
 def eval(modelConfig: Dict):
     # load model and evaluate
     with torch.no_grad():
