@@ -294,35 +294,60 @@ def evaluate(modelConfig: Dict): # This function will load a trained model and g
     # load model and evaluate
     with torch.no_grad():
         device = torch.device(modelConfig["device"])
-        model = UNet(T=modelConfig["T"], ch=modelConfig["channel"], ch_mult=modelConfig["channel_mult"], attn=modelConfig["attn"],
-                     num_res_blocks=modelConfig["num_res_blocks"], dropout=0.)
+        os.makedirs(modelConfig["sampled_dir"], exist_ok=True)
+        model = UNet(T=modelConfig["T"], 
+                     ch=modelConfig["channel"], 
+                     ch_mult=modelConfig["channel_mult"], 
+                     attn=modelConfig["attn"],
+                     num_res_blocks=modelConfig["num_res_blocks"], 
+                     dropout=0.).to(device)
+        
         # During sampling, I do not want random dropout behavior. So dropout is set to zero.
         # However, the architecture must still match the trained model. 
         # In most cases this is okay because dropout does not change parameter shapes.
+
+        # This loads the saved weights.
         ckpt = torch.load(os.path.join(
             modelConfig["save_weight_dir"], modelConfig["test_load_weight"]), map_location=device)
-        # This loads the saved weights.
         
-        model.load_state_dict(ckpt) # This copies the trained weights into the fresh U-Net.
-        
+        # This copies the trained weights into the fresh U-Net.
+        model.load_state_dict(ckpt) 
         # model.load_state_dict(ckpt["model_state_dict"]) # if I use later a full checkpoint
         
-        print("model load weight done.") # this confirms that the model weights were loaded.
+        # this confirms that the model weights were loaded.
+        print("model load weight done.") 
         
         model.eval()    
         
-        sampler = GaussianDiffusionSampler(
-            model, modelConfig["beta_1"], modelConfig["beta_T"], modelConfig["T"]).to(device)
         # This wraps the trained U-Net inside the reverse diffusion sampler.
         # This sampler performs x_T → x_{T-1} → x_{T-2} → ... → x_0
+        sampler = GaussianDiffusionSampler(
+            model, modelConfig["beta_1"], modelConfig["beta_T"], modelConfig["T"]).to(device)
         
-        # Sampled from standard normal distribution
+        # Sampled from standard normal distribution creates random Gaussian noise.
+        # so for CIFAR10 images 3 channels, 32 x 32 pixels.
+        # for batch size = 64, the noisyImage.shape = (64, 3, 32, 32)
+        # The model will gradually denoise this into images.
         noisyImage = torch.randn(
             size=[modelConfig["batch_size"], 3, 32, 32], device=device)
-        saveNoisy = torch.clamp(noisyImage * 0.5 + 0.5, 0, 1)
+        
+        
+        # The diffusion model works in the range of [-1,1], 
+        # so this line converts from [-1,1] -> [0,1]
+        saveNoisy = torch.clamp(noisyImage * 0.5 + 0.5, 0, 1) 
+        
+        # This saves the initial random noise image.
         save_image(saveNoisy, os.path.join(
-            modelConfig["sampled_dir"], modelConfig["sampledNoisyImgName"]), nrow=modelConfig["nrow"])
-        sampledImgs = sampler(noisyImage)
+            modelConfig["sampled_dir"], modelConfig["sampledNoisyImgName"]), 
+            nrow=modelConfig["nrow"])
+        
+        # calls the forward() method of GaussianDiffusionSampler.
+        # finally the sampledImgs should be the generated images.
+        sampledImgs = sampler(noisyImage) 
         sampledImgs = sampledImgs * 0.5 + 0.5  # [0 ~ 1]
+
+        # saves the generated images as a grid.
         save_image(sampledImgs, os.path.join(
-            modelConfig["sampled_dir"],  modelConfig["sampledImgName"]), nrow=modelConfig["nrow"])
+            modelConfig["sampled_dir"],  
+            modelConfig["sampledImgName"]), 
+            nrow=modelConfig["nrow"])
