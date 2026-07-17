@@ -290,19 +290,32 @@ AdamW updates U-Net parameters
 """                             
 
 # Now we move to sampling
-def eval(modelConfig: Dict):
+def evaluate(modelConfig: Dict): # This function will load a trained model and generate images.
     # load model and evaluate
     with torch.no_grad():
         device = torch.device(modelConfig["device"])
         model = UNet(T=modelConfig["T"], ch=modelConfig["channel"], ch_mult=modelConfig["channel_mult"], attn=modelConfig["attn"],
                      num_res_blocks=modelConfig["num_res_blocks"], dropout=0.)
+        # During sampling, I do not want random dropout behavior. So dropout is set to zero.
+        # However, the architecture must still match the trained model. 
+        # In most cases this is okay because dropout does not change parameter shapes.
         ckpt = torch.load(os.path.join(
             modelConfig["save_weight_dir"], modelConfig["test_load_weight"]), map_location=device)
-        model.load_state_dict(ckpt)
-        print("model load weight done.")
-        model.eval()
+        # This loads the saved weights.
+        
+        model.load_state_dict(ckpt) # This copies the trained weights into the fresh U-Net.
+        
+        # model.load_state_dict(ckpt["model_state_dict"]) # if I use later a full checkpoint
+        
+        print("model load weight done.") # this confirms that the model weights were loaded.
+        
+        model.eval()    
+        
         sampler = GaussianDiffusionSampler(
             model, modelConfig["beta_1"], modelConfig["beta_T"], modelConfig["T"]).to(device)
+        # This wraps the trained U-Net inside the reverse diffusion sampler.
+        # This sampler performs x_T → x_{T-1} → x_{T-2} → ... → x_0
+        
         # Sampled from standard normal distribution
         noisyImage = torch.randn(
             size=[modelConfig["batch_size"], 3, 32, 32], device=device)
