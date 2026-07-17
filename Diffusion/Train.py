@@ -17,7 +17,7 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
     device = torch.device(modelConfig["device"]) # this reads the device name from the configuration.
     # dataset creation
     dataset =CIFAR10(
-        root = './CIFAR10', train=True, download=False,
+        root = "D:\Deep_Learning\Data\GenAI\CIFAR10", train=True, download=False,
         transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -168,24 +168,24 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
         warmUpScheduler.step()
 
         # save checkpoint
-        checkpoint_path = os.path.join(
-             modelConfig["save_weight_dir"],
-             f"ckpt_{e+1}.pt"
-        )
+        #checkpoint_path = os.path.join(
+             #modelConfig["save_weight_dir"],
+             #f"ckpt_{e+1}.pt"
+        #)
 
-        torch.save(net_model.state_dict(), checkpoint_path)
+        #torch.save(net_model.state_dict(), checkpoint_path)
 
 
         # If i want to save every "n" epoch then we can use if condition here;
         # 
-        #if (e + 1) % 20 == 0:
-        #    checkpoint_path = os.path.join(
-        #        modelConfig["save_weight_dir"],
-        #        f"ckpt_{e+1}.pt"
-        #    )
+        if (e + 1) % 50 == 0:
+           checkpoint_path = os.path.join(
+               modelConfig["save_weight_dir"],
+               f"ckpt_{e+1}.pt"
+          )
 
-        #    torch.save(net_model.state_dict(), checkpoint_path)
-        #    print(f"Saved checkpoint: {checkpoint_path}")
+        torch.save(net_model.state_dict(), checkpoint_path)
+        print(f"Saved checkpoint: {checkpoint_path}")
 
         # Another way of controlling this same thing is from modelConfig
         # adding "save_interval" : 20 / 200 / .... in modelConfig
@@ -265,29 +265,29 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
             print(f"Saved full checkpoint: {checkpoint_path}")
     """
 
-"""
-Clean images x₀
-        ↓
-GaussianDiffusionTrainer randomly chooses timestep t
-        ↓
-Gaussian noise ε is sampled
-        ↓
-Noisy image xₜ is constructed
-        ↓
-U-Net receives xₜ and t
-        ↓
-U-Net predicts noise εθ(xₜ, t)
-        ↓
-Predicted noise is compared with real noise ε
-        ↓
-Loss is computed
-        ↓
-Backpropagation calculates gradients
-        ↓
-Gradient clipping limits very large gradients
-        ↓
-AdamW updates U-Net parameters
-"""                             
+    """
+    Clean images x₀
+            ↓
+    GaussianDiffusionTrainer randomly chooses timestep t
+            ↓
+    Gaussian noise ε is sampled
+            ↓
+    Noisy image xₜ is constructed
+            ↓
+    U-Net receives xₜ and t
+            ↓
+    U-Net predicts noise εθ(xₜ, t)
+            ↓
+    Predicted noise is compared with real noise ε
+            ↓
+    Loss is computed
+            ↓
+    Backpropagation calculates gradients
+            ↓
+    Gradient clipping limits very large gradients
+            ↓
+    AdamW updates U-Net parameters
+    """                             
 
 # Now we move to sampling
 def evaluate(modelConfig: Dict): # This function will load a trained model and generate images.
