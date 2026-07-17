@@ -22,9 +22,9 @@ def main(model_config = None):
         "grad_clip": 1.,
         "device": "cuda:0", ### MAKE SURE YOU HAVE A GPU !!!
         "training_load_weight": None,
-        "save_weight_dir": ".Diffusion-Models_checkpointfolder/Diffusion/Checkpoints/",
+        "save_weight_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/Diffusion/Checkpoints/",
         "test_load_weight": "ckpt_199_.pt",
-        "sampled_dir": ".Diffusion-Models_checkpointfolder/Diffusion/SampledImgs/",
+        "sampled_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/Diffusion/SampledImgs/",
         "sampledNoisyImgName": "NoisyNoGuidenceImgs.png",
         "sampledImgName": "SampledNoGuidenceImgs.png",
         "nrow": 8

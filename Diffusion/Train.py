@@ -17,7 +17,7 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
     device = torch.device(modelConfig["device"]) # this reads the device name from the configuration.
     # dataset creation
     dataset =CIFAR10(
-        root = "D:\Deep_Learning\Data\GenAI\CIFAR10", train=True, download=False,
+        root = r"D:\Deep_Learning\Data\GenAI\CIFAR10", train=True, download=False,
         transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -124,7 +124,7 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
     os.makedirs(modelConfig["save_weight_dir"], exist_ok=True)
     # This creates the directory where weights will be saved.
 
-    # start training
+    # start training...........
     for e in range(modelConfig["epoch"]): # This repeats training for requested number of epochs.
         net_model.train() # this puts the U-net into training mode
 
@@ -182,10 +182,9 @@ def train(modelConfig : Dict): # indicates that modelConfig should be a dictiona
            checkpoint_path = os.path.join(
                modelConfig["save_weight_dir"],
                f"ckpt_{e+1}.pt"
-          )
-
-        torch.save(net_model.state_dict(), checkpoint_path)
-        print(f"Saved checkpoint: {checkpoint_path}")
+            )
+           torch.save(net_model.state_dict(), checkpoint_path)
+           print(f"Saved checkpoint: {checkpoint_path}")
 
         # Another way of controlling this same thing is from modelConfig
         # adding "save_interval" : 20 / 200 / .... in modelConfig
