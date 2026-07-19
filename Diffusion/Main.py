@@ -3,7 +3,7 @@ from Train import train, evaluate
 
 def main(model_config = None):
     modelConfig = {
-        "state": "train", # or evaluate
+        "state": "evaluate", # train or evaluate
         # Diffusion settings
         "epoch": 200,
         "batch_size": 80,
@@ -23,7 +23,7 @@ def main(model_config = None):
         "device": "cuda:0", ### MAKE SURE YOU HAVE A GPU !!!
         "training_load_weight": None,
         "save_weight_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/Diffusion/Checkpoints/",
-        "test_load_weight": "ckpt_199_.pt",
+        "test_load_weight": "ckpt_200.pt",
         "sampled_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/Diffusion/SampledImgs/",
         "sampledNoisyImgName": "NoisyNoGuidenceImgs.png",
         "sampledImgName": "SampledNoGuidenceImgs.png",
