@@ -123,8 +123,8 @@ class UpSample(nn.Module):
 
     def forward(self, x, temb, cemb):
         _, _, H, W = x.shape
-        x = self.t(x)
-        x = self.c(x)
+        x = self.t(x) # Convtranspose2d upsampling
+        x = self.c(x) # Conv2d refinement
         return x
 
 
@@ -192,12 +192,20 @@ class ResBlock(nn.Module):
             self.attn = nn.Identity()
 
 
-    def forward(self, x, temb, labels):
+    def forward(self, x, temb, cemb): # "cemb" is the conditional embedding of the raw labels
         h = self.block1(x)
         h += self.temb_proj(temb)[:, :, None, None]
-        h += self.cond_proj(labels)[:, :, None, None]
+        h += self.cond_proj(cemb)[:, :, None, None]
+        """
+        Suppose if h.shape = (B, out_ch, H, W) and cemb.shape = (B, tdim)
+        then self.cond_proj(cemb) gives (B,out_ch), 
+        then, [: , : , None ,  None] turns into (B, out_ch, 1, 1).
+        Then Pytorch broadcasts it across the spatial dimensions:
+        (B, out_ch, 1, 1) -> (B, out_ch, H, W).
+        So the same class conditional information is added to every spatial location of the feature map.
+        it is like : feature map h + "this should be class dog". This is the class-conditioning mechanism.
+        """
         h = self.block2(h)
-
         h = h + self.shortcut(x)
         h = self.attn(h)
         return h
