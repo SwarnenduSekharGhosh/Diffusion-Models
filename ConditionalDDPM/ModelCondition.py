@@ -84,19 +84,19 @@ class ConditionalEmbedding(nn.Module): #reminder : CIFAR 10 has 10 classes
         super().__init__()
         self.condEmbedding = nn.Sequential(
             nn.Embedding(num_embeddings=num_labels + 1, 
-                         embedding_dim=d_model, padding_idx=0), # creates an embedding table of size 11 x d_model.
-                                                                # why 11 because the code reserves lable 0 as a special null/ no-condition label.
-            """
-            0  → no condition
-            1  → class 0 maybe airplane
-            2  → class 1 maybe automobile
-            ...
-            10 → class 9 maybe truck
-            """
-            nn.Linear(d_model, dim),
-            Swish(),
-            nn.Linear(dim, dim),
+                         embedding_dim=d_model, padding_idx=0),
+                         nn.Linear(d_model, dim),
+                            Swish(),
+                            nn.Linear(dim, dim),
         )
+        # creates an embedding table of size 11 x d_model.
+        # why 11 because the code reserves lable 0 as a special null/ no-condition label.
+        # 0  → no condition
+        # 1  → class 0 maybe airplane
+        # 2  → class 1 maybe automobile
+        #  ...
+        # 10 → class 9 maybe truck
+      
 
     def forward(self, t):
         emb = self.condEmbedding(t)
