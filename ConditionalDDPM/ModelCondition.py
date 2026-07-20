@@ -210,6 +210,23 @@ class ResBlock(nn.Module):
         h = self.attn(h)
         return h
 
+"""
+So in class conditional DDPM:
+Each ResBlock now receives three things:
+1. image feature x
+2. time information temb
+3. class information cemb
+
+Then it does:
+
+1. process image features
+2. add timestep information
+3. add class-label information
+4. process again
+5. add residual shortcut
+6. optional attention
+
+"""
 
 class UNet(nn.Module):
     def __init__(self, T, num_labels, ch, ch_mult, num_res_blocks, dropout):
@@ -217,14 +234,15 @@ class UNet(nn.Module):
         tdim = ch * 4
         self.time_embedding = TimeEmbedding(T, ch, tdim)
         self.cond_embedding = ConditionalEmbedding(num_labels, ch, tdim)
-        self.head = nn.Conv2d(3, ch, kernel_size=3, stride=1, padding=1)
+        self.head = nn.Conv2d(3, ch, kernel_size=3, stride=1, padding=1) # Because this is class conditioning, the label is not concatenated to the image channels.
         self.downblocks = nn.ModuleList()
         chs = [ch]  # record output channel when dowmsample for upsample
         now_ch = ch
         for i, mult in enumerate(ch_mult):
             out_ch = ch * mult
             for _ in range(num_res_blocks):
-                self.downblocks.append(ResBlock(in_ch=now_ch, out_ch=out_ch, tdim=tdim, dropout=dropout))
+                self.downblocks.append(ResBlock(in_ch=now_ch, out_ch=out_ch, 
+                                                tdim=tdim, dropout=dropout))
                 now_ch = out_ch
                 chs.append(now_ch)
             if i != len(ch_mult) - 1:
@@ -240,7 +258,10 @@ class UNet(nn.Module):
         for i, mult in reversed(list(enumerate(ch_mult))):
             out_ch = ch * mult
             for _ in range(num_res_blocks + 1):
-                self.upblocks.append(ResBlock(in_ch=chs.pop() + now_ch, out_ch=out_ch, tdim=tdim, dropout=dropout, attn=False))
+                self.upblocks.append(ResBlock(in_ch=chs.pop() + now_ch, 
+                                              out_ch=out_ch, 
+                                              tdim=tdim, dropout=dropout, 
+                                              attn=False))
                 now_ch = out_ch
             if i != 0:
                 self.upblocks.append(UpSample(now_ch))
