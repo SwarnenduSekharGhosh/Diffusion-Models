@@ -3,7 +3,7 @@ from TrainCondition import train, evaluate
 
 def main(model_config=None):
     modelConfig = {
-        "state": "train", # train or evaluate
+        "state": "evaluate", # train or evaluate
         "epoch": 70,
         "batch_size": 80,
         "T": 500,
@@ -21,18 +21,21 @@ def main(model_config=None):
         "w": 1.8,
         "save_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/DiffusionConditional/Checkpoints/",
         "training_load_weight": None,
-        "test_load_weight": "ckpt_200.pt",
+        "test_load_weight": "ckpt_50.pt",
         "sampled_dir": "D:/DL_Projects/Diffusion-Models_checkpointfolder/DiffusionConditional/SampledImgs/",
         "sampledNoisyImgName": "NoisyGuidenceImgs.png",
         "sampledImgName": "SampledGuidenceImgs.png",
         "nrow": 8
-    }
+         }
     if model_config is not None:
         modelConfig = model_config
     if modelConfig["state"] == "train":
         train(modelConfig)
+    elif modelConfig["state"] == "evaluate":
+        evaluate(modelConfig)
+
     else:
-        eval(modelConfig)
+        raise ValueError("modelConfig['state'] must be either 'train' or 'evaluate'.")
 
 
 if __name__ == '__main__':
